@@ -1,15 +1,11 @@
 import ffmpeg from 'fluent-ffmpeg';
-import ffmpegPath from 'ffmpeg-static';
 import path from 'path';
 import fs from 'fs';
-
-if (ffmpegPath) {
-  ffmpeg.setFfmpegPath(ffmpegPath);
-}
 
 export async function generateVideo(title: string, taskId: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const outputDir = path.join(process.cwd(), 'public', 'videos');
+
     if (!fs.existsSync(outputDir)) {
       fs.mkdirSync(outputDir, { recursive: true });
     }

@@ -1,5 +1,4 @@
 import ffmpeg from 'fluent-ffmpeg';
-import ffmpegPath from 'ffmpeg-static';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -8,11 +7,7 @@ import { promisify } from 'util';
 
 const execFileAsync = promisify(execFile);
 
-if (!ffmpegPath) {
-  throw new Error('FFmpeg binary path could not be resolved.');
-}
-
-const ffmpegExecutable: string = ffmpegPath;
+const ffmpegExecutable = 'ffmpeg';
 
 ffmpeg.setFfmpegPath(ffmpegExecutable);
 
