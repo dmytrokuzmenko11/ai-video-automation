@@ -8,7 +8,7 @@ export async function sendTelegramNotification(message: string) {
   }
   const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
   try {
-    await fetch(url, {
+    const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -17,6 +17,25 @@ export async function sendTelegramNotification(message: string) {
         parse_mode: 'HTML',
       }),
     });
+
+    const contentType = response.headers.get('content-type') || '';
+    const responseBody = contentType.includes('application/json')
+      ? await response.json().catch(() => null)
+      : await response.text();
+
+    if (!response.ok) {
+      const telegramDescription =
+        typeof responseBody === 'string'
+          ? responseBody
+          : responseBody?.description || responseBody?.error || JSON.stringify(responseBody);
+
+      console.error(
+        `Telegram notification failed with status ${response.status}: ${telegramDescription}`
+      );
+      return;
+    }
+
+    console.log('Telegram notification sent successfully');
   } catch (error) {
     console.error('Error sending Telegram notification:', error);
   }
