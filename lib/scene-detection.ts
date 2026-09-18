@@ -4,6 +4,7 @@ import os from 'os';
 import path from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
+import { getErrorMessage, getErrorStack, logError } from './error-logger';
 
 const execFileAsync = promisify(execFile);
 
@@ -71,10 +72,7 @@ async function getVideoDuration(
 
     return duration;
   } catch (error) {
-    const message =
-      error instanceof Error
-        ? error.message
-        : 'Unknown FFmpeg error';
+    const message = getErrorMessage(error);
 
     throw new Error(
       `Could not determine video duration: ${message}`
@@ -210,6 +208,13 @@ function runSceneDetection(
     command.on(
       'error',
       (error: Error) => {
+        void logError({
+          stage: 'ffmpeg',
+          type: 'ffmpeg_error',
+          message: error.message,
+          stackTrace: error.stack ?? null,
+        });
+
         reject(
           new Error(
             `FFmpeg scene detection failed: ${error.message}\n${stderr}`

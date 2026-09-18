@@ -4,6 +4,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { promisify } from "util";
+import { getErrorMessage, getErrorStack, logError } from "@/lib/error-logger";
 
 const execFile = promisify(require("child_process").execFile);
 
@@ -103,6 +104,13 @@ async function renderScenes(
       maxBuffer: 10 * 1024 * 1024,
     });
   } catch (error) {
+    void logError({
+      stage: "ffmpeg",
+      type: "ffmpeg_error",
+      message: getErrorMessage(error),
+      stackTrace: getErrorStack(error),
+    });
+
     const ffmpegError = error as {
       message?: string;
       stderr?: string;
@@ -208,6 +216,16 @@ export async function POST(request: Request) {
 
     const tempDir = os.tmpdir();
 
+    const renderStartedAt = new Date().toISOString();
+
+    await supabase
+      .from("video_versions")
+      .update({
+        render_started_at: renderStartedAt,
+        render_completed_at: null,
+      })
+      .eq("id", versionId);
+
     sourcePath = path.join(
       tempDir,
       `render-source-${Date.now()}.mp4`
@@ -305,6 +323,21 @@ export async function POST(request: Request) {
       }
     }
 
+    const renderCompletedAt = new Date().toISOString();
+
+    const { error: renderMetaError } = await supabase
+      .from("video_versions")
+      .update({
+        render_completed_at: renderCompletedAt,
+      })
+      .eq("id", versionId);
+
+    if (renderMetaError) {
+      throw new Error(
+        `Failed to save render timestamps: ${renderMetaError.message}`
+      );
+    }
+
     console.log(
       `Version ${version.version_number} rendered successfully.`
     );
@@ -320,6 +353,19 @@ export async function POST(request: Request) {
       "Render version route error:",
       error
     );
+
+    const taskId =
+      error instanceof Error && "taskId" in error
+        ? (error as { taskId?: string }).taskId ?? null
+        : null;
+
+    void logError({
+      stage: "render",
+      type: "render_error",
+      message: getErrorMessage(error),
+      stackTrace: getErrorStack(error),
+      taskId,
+    });
 
     return NextResponse.json(
       {

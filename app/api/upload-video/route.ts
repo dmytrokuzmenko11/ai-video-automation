@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { detectScenes } from "@/lib/scene-detection";
+import { getErrorMessage, getErrorStack, logError } from "@/lib/error-logger";
 
 function getSupabaseAdmin() {
   return createClient(
@@ -130,8 +131,20 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error("Upload video route error:", error);
 
-    const message =
-      error instanceof Error ? error.message : "Unknown error";
+    const message = getErrorMessage(error);
+
+    const taskId =
+      error instanceof Error && "taskId" in error
+        ? (error as { taskId?: string }).taskId ?? null
+        : null;
+
+    void logError({
+      stage: "upload",
+      type: "upload_error",
+      message,
+      stackTrace: getErrorStack(error),
+      taskId,
+    });
 
     return NextResponse.json(
       { error: message },
