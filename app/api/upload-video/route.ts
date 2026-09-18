@@ -18,45 +18,59 @@ export async function POST(request: Request) {
 
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const { data: updatedTask, error } = await supabase
+    await supabase
       .from('tasks')
       .update({
         video_url: videoUrl,
         status: 'in_progress',
       })
-      .eq('id', taskId)
-      .select();
-
-    if (error) {
-      console.error('Error updating task:', error);
-
-      return NextResponse.json(
-        { error: error.message },
-        { status: 500 }
-      );
-    }
+      .eq('id', taskId);
 
     console.log(`Running scene detection for video URL: ${videoUrl}`);
 
     const sceneDetectionResult = await detectScenes(videoUrl);
 
     console.log(
-      'Detected scenes:',
-      sceneDetectionResult.scenes
+      `Detected ${sceneDetectionResult.scenes.length} scenes`
     );
 
+    const duration =
+      sceneDetectionResult.scenes.length > 0
+        ? sceneDetectionResult.scenes[
+            sceneDetectionResult.scenes.length - 1
+          ].end
+        : 0;
+
+    const { data: finalTask, error: updateError } = await supabase
+      .from('tasks')
+      .update({
+        scenes: sceneDetectionResult.scenes,
+        duration,
+        status: 'review',
+      })
+      .eq('id', taskId)
+      .select()
+      .single();
+
+    if (updateError) {
+      console.error('Error saving scenes:', updateError);
+
+      return NextResponse.json(
+        { error: updateError.message },
+        { status: 500 }
+      );
+    }
+
     return NextResponse.json({
-      data: updatedTask,
+      data: finalTask,
       scenes: sceneDetectionResult.scenes,
-      message: 'Video uploaded and task status updated.',
+      message: 'Video processed successfully.',
     });
   } catch (error) {
     console.error('Upload video route error:', error);
 
     const message =
-      error instanceof Error
-        ? error.message
-        : 'Unknown error';
+      error instanceof Error ? error.message : 'Unknown error';
 
     return NextResponse.json(
       { error: message },
