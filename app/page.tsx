@@ -93,7 +93,10 @@ export default function KanbanPage() {
     }
   }
 
-  async function fetchVersions(taskId: string) {
+  async function fetchVersions(
+    taskId: string,
+    fallbackScenes?: Scene[]
+  ) {
     try {
       const res = await fetch(
         `/api/versions?taskId=${encodeURIComponent(taskId)}`
@@ -106,7 +109,38 @@ export default function KanbanPage() {
         return;
       }
 
-      const loadedVersions = (result.versions || []) as VideoVersion[];
+      let loadedVersions = (result.versions || []) as VideoVersion[];
+
+      if (
+        loadedVersions.length === 0 &&
+        fallbackScenes &&
+        fallbackScenes.length > 0
+      ) {
+        const createRes = await fetch("/api/versions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            taskId,
+            scenes: fallbackScenes,
+          }),
+        });
+
+        const createResult = await createRes.json();
+
+        if (!createRes.ok) {
+          console.error(
+            "Create initial V1 error:",
+            createResult.error
+          );
+          return;
+        }
+
+        loadedVersions = [
+          createResult.version as VideoVersion,
+        ];
+      }
 
       setVersions(loadedVersions);
 
@@ -127,7 +161,7 @@ export default function KanbanPage() {
     setActiveVersion(null);
 
     if (task.video_url) {
-      await fetchVersions(task.id);
+      await fetchVersions(task.id, task.scenes);
     }
   }
 
