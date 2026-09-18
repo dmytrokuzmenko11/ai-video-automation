@@ -1,6 +1,13 @@
-import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-import { detectScenes } from '@/lib/scene-detection';
+import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
+import { detectScenes } from "@/lib/scene-detection";
+
+function getSupabaseAdmin() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SECRET_KEY!
+  );
+}
 
 export async function POST(request: Request) {
   try {
@@ -8,25 +15,24 @@ export async function POST(request: Request) {
 
     if (!taskId || !videoUrl) {
       return NextResponse.json(
-        { error: 'Missing taskId or videoUrl' },
+        { error: "Missing taskId or videoUrl" },
         { status: 400 }
       );
     }
 
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    const supabase = getSupabaseAdmin();
 
     await supabase
-      .from('tasks')
+      .from("tasks")
       .update({
         video_url: videoUrl,
-        status: 'in_progress',
+        status: "in_progress",
       })
-      .eq('id', taskId);
+      .eq("id", taskId);
 
-    console.log(`Running scene detection for video URL: ${videoUrl}`);
+    console.log(
+      `Running scene detection for video URL: ${videoUrl}`
+    );
 
     const sceneDetectionResult = await detectScenes(videoUrl);
 
@@ -41,22 +47,76 @@ export async function POST(request: Request) {
           ].end
         : 0;
 
-    const { data: finalTask, error: updateError } = await supabase
-      .from('tasks')
+    const { error: taskUpdateError } = await supabase
+      .from("tasks")
       .update({
         scenes: sceneDetectionResult.scenes,
         duration,
-        status: 'review',
+        status: "in_progress",
       })
-      .eq('id', taskId)
-      .select()
-      .single();
+      .eq("id", taskId);
 
-    if (updateError) {
-      console.error('Error saving scenes:', updateError);
-
+    if (taskUpdateError) {
       return NextResponse.json(
-        { error: updateError.message },
+        { error: taskUpdateError.message },
+        { status: 500 }
+      );
+    }
+
+    const { data: existingVersion, error: existingVersionError } =
+      await supabase
+        .from("video_versions")
+        .select("*")
+        .eq("task_id", taskId)
+        .eq("version_number", 1)
+        .maybeSingle();
+
+    if (existingVersionError) {
+      return NextResponse.json(
+        { error: existingVersionError.message },
+        { status: 500 }
+      );
+    }
+
+    let version = existingVersion;
+
+    if (!version) {
+      const { data: newVersion, error: versionError } =
+        await supabase
+          .from("video_versions")
+          .insert({
+            task_id: taskId,
+            version_number: 1,
+            scenes: sceneDetectionResult.scenes,
+          })
+          .select()
+          .single();
+
+      if (versionError) {
+        console.error(
+          "Error creating V1:",
+          versionError
+        );
+
+        return NextResponse.json(
+          { error: versionError.message },
+          { status: 500 }
+        );
+      }
+
+      version = newVersion;
+    }
+
+    const { data: finalTask, error: finalTaskError } =
+      await supabase
+        .from("tasks")
+        .select("*")
+        .eq("id", taskId)
+        .single();
+
+    if (finalTaskError) {
+      return NextResponse.json(
+        { error: finalTaskError.message },
         { status: 500 }
       );
     }
@@ -64,13 +124,14 @@ export async function POST(request: Request) {
     return NextResponse.json({
       data: finalTask,
       scenes: sceneDetectionResult.scenes,
-      message: 'Video processed successfully.',
+      version,
+      message: "Video processed successfully.",
     });
   } catch (error) {
-    console.error('Upload video route error:', error);
+    console.error("Upload video route error:", error);
 
     const message =
-      error instanceof Error ? error.message : 'Unknown error';
+      error instanceof Error ? error.message : "Unknown error";
 
     return NextResponse.json(
       { error: message },

@@ -103,13 +103,40 @@ function parseSceneTimestamps(
   return timestamps;
 }
 
+function filterCloseCuts(
+  timestamps: number[],
+  minGap = 0.35
+): number[] {
+  const sorted = [...timestamps].sort(
+    (a, b) => a - b
+  );
+
+  const filtered: number[] = [];
+
+  for (const timestamp of sorted) {
+    if (
+      filtered.length === 0 ||
+      timestamp - filtered[filtered.length - 1] >= minGap
+    ) {
+      filtered.push(timestamp);
+    }
+  }
+
+  return filtered;
+}
+
 function createScenes(
   duration: number,
   cutTimestamps: number[]
 ): Scene[] {
+  const filteredCuts = filterCloseCuts(
+    cutTimestamps,
+    0.35
+  );
+
   const uniqueCuts = Array.from(
     new Set(
-      cutTimestamps
+      filteredCuts
         .filter(
           (timestamp) =>
             timestamp > 0 &&
@@ -218,7 +245,7 @@ async function downloadVideo(
 
 export async function detectScenes(
   input: string,
-  threshold = 0.3
+  threshold = 0.12
 ): Promise<SceneDetectionResult> {
   if (
     !Number.isFinite(threshold) ||
@@ -284,7 +311,7 @@ export async function detectScenes(
     );
 
     console.log(
-      `Scene detection completed. Cuts: ${cutTimestamps.length}, scenes: ${scenes.length}`
+      `Scene detection completed. Raw cuts: ${cutTimestamps.length}, scenes: ${scenes.length}`
     );
 
     return {

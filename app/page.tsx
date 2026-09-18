@@ -165,6 +165,52 @@ export default function KanbanPage() {
     }
   }
 
+
+  async function deleteTask(taskId: string) {
+    const task = tasks.find((item) => item.id === taskId);
+
+    if (!task) return;
+
+    const confirmed = window.confirm(
+      `Видалити задачу "${task.title}"? Цю дію неможливо скасувати.`
+    );
+
+    if (!confirmed) return;
+
+    try {
+      const res = await fetch(
+        `/api/tasks?taskId=${encodeURIComponent(taskId)}`,
+        {
+          method: "DELETE",
+        }
+      );
+
+      const result = await res.json();
+
+      if (!res.ok) {
+        alert(
+          "Помилка видалення: " +
+            (result.error || "Невідома помилка")
+        );
+        return;
+      }
+
+      setTasks((current) =>
+        current.filter((item) => item.id !== taskId)
+      );
+
+      if (selectedTask?.id === taskId) {
+        setSelectedTask(null);
+        setVersions([]);
+        setActiveVersion(null);
+        setUploadStatus("");
+      }
+    } catch (error) {
+      console.error("Delete task error:", error);
+      alert("Помилка видалення задачі.");
+    }
+  }
+
   async function handleAddTask(e: React.FormEvent) {
     e.preventDefault();
 
@@ -273,7 +319,7 @@ export default function KanbanPage() {
         );
 
         await fetchTasks();
-        await fetchVersions(selectedTask.id);
+        await fetchVersions(selectedTask.id, result.scenes);
       } else {
         alert(
           "Помилка API: " +
@@ -487,68 +533,96 @@ export default function KanbanPage() {
 
         <button
           type="submit"
-          className="px-6 py-2 bg-blue-600 rounded font-medium hover:bg-blue-500"
+          className="px-5 py-2 bg-blue-600 rounded font-medium hover:bg-blue-500 transition"
         >
           Додати задачу
         </button>
       </form>
 
-      <div className="grid grid-cols-4 gap-4">
-        {columns.map((col) => (
-          <div
-            key={col}
-            className="bg-slate-800 p-4 rounded-lg min-h-[400px]"
-          >
-            <h2 className="text-xl font-semibold capitalize mb-4">
-              {col.replace("_", " ")}
-            </h2>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {columns.map((column) => {
+          const columnTasks = tasks.filter(
+            (task) => task.status === column
+          );
 
-            <div className="space-y-3">
-              {tasks
-                .filter((task) => task.status === col)
-                .map((task) => (
+          const columnTitle =
+            column === "todo"
+              ? "Todo"
+              : column === "in_progress"
+                ? "In Progress"
+                : column === "review"
+                  ? "Review"
+                  : "Done";
+
+          return (
+            <div
+              key={column}
+              className="bg-slate-800 rounded-lg p-4 min-h-[300px]"
+            >
+              <h2 className="text-lg font-semibold mb-4">
+                {columnTitle}
+              </h2>
+
+              <div className="space-y-3">
+                {columnTasks.map((task) => (
                   <div
                     key={task.id}
                     onClick={() => selectTask(task)}
-                    className="p-4 bg-slate-700 rounded cursor-pointer hover:bg-slate-600 transition"
+                    className="h-[105px] bg-slate-700 rounded cursor-pointer hover:bg-slate-600 transition flex items-center px-5"
                   >
-                    <p className="font-medium">
+                    <p className="text-2xl font-medium text-white">
                       {task.title}
                     </p>
-
-                    {task.video_url && (
-                      <p className="text-xs text-green-400 mt-2">
-                        📹 Відео завантажено
-                      </p>
-                    )}
-
-                    {task.duration && (
-                      <p className="text-xs text-slate-400 mt-1">
-                        Довжина:{" "}
-                        {formatTime(task.duration)}
-                      </p>
-                    )}
-
-                    {task.scenes &&
-                      task.scenes.length > 0 && (
-                        <p className="text-xs text-blue-400 mt-1">
-                          Авто-сцен:{" "}
-                          {task.scenes.length}
-                        </p>
-                      )}
                   </div>
                 ))}
+
+                {columnTasks.length === 0 && (
+                  <p className="text-sm text-slate-500">
+                    Немає задач
+                  </p>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {selectedTask && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
-          <div className="bg-slate-800 p-6 rounded-lg max-w-5xl w-full border border-slate-700 shadow-xl max-h-[90vh] overflow-y-auto">
-            <h3 className="text-xl font-bold mb-2">
-              {selectedTask.title}
-            </h3>
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-6">
+          <div className="bg-slate-800 rounded-xl w-full max-w-5xl max-h-[90vh] overflow-y-auto p-6">
+            <div className="flex items-start justify-between gap-4 mb-2">
+              <h3 className="text-xl font-bold">
+                {selectedTask.title}
+              </h3>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedTask(null);
+                  setVersions([]);
+                  setActiveVersion(null);
+                  setUploadStatus("");
+                }}
+                aria-label="Закрити"
+                title="Закрити"
+                className="shrink-0 p-2 rounded text-slate-400 hover:text-white hover:bg-slate-700 transition"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  className="w-6 h-6"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M6 6l12 12M18 6L6 18"
+                  />
+                </svg>
+              </button>
+            </div>
 
             <p className="text-sm text-slate-400 mb-4">
               Статус:{" "}
@@ -561,7 +635,7 @@ export default function KanbanPage() {
               <>
                 <div className="mb-6">
                   <p className="text-sm font-medium mb-2 text-green-400">
-                    📹 Перегляд завантаженого відео:
+                    Перегляд завантаженого відео:
                   </p>
 
                   <video
@@ -597,9 +671,7 @@ export default function KanbanPage() {
                         <button
                           key={version.id}
                           type="button"
-                          onClick={() =>
-                            setActiveVersion(version)
-                          }
+                          onClick={() => setActiveVersion(version)}
                           className={`px-4 py-2 rounded border font-medium transition ${
                             activeVersion?.id === version.id
                               ? "bg-blue-600 border-blue-500 text-white"
@@ -622,8 +694,7 @@ export default function KanbanPage() {
                     <div className="flex items-center justify-between mb-4">
                       <div>
                         <h4 className="text-lg font-semibold">
-                          V{activeVersion.version_number} —
-                          Монтажний таймлайн
+                          V{activeVersion.version_number} — Монтажний таймлайн
                         </h4>
 
                         <p className="text-xs text-slate-500 mt-1">
@@ -632,174 +703,65 @@ export default function KanbanPage() {
                       </div>
 
                       <span className="text-xs text-slate-400">
-                        {savingScenes
-                          ? "Збереження..."
-                          : "Збережено"}
+                        {savingScenes ? "Збереження..." : "Збережено"}
                       </span>
                     </div>
 
                     <div className="flex gap-1 h-24 mb-2">
-                      {activeVersion.scenes.map(
-                        (scene, index) => {
-                          const total =
-                            selectedTask.duration || 1;
+                      {activeVersion.scenes.map((scene, index) => {
+                        const total = selectedTask.duration || 1;
+                        const width = (scene.duration / total) * 100;
 
-                          const width =
-                            (scene.duration / total) *
-                            100;
+                        return (
+                          <div
+                            key={`${activeVersion.id}-${index}-${scene.start}-${scene.end}`}
+                            draggable
+                            onDragStart={() => setDraggedSceneIndex(index)}
+                            onDragOver={(e) => e.preventDefault()}
+                            onDrop={() => handleDragEnd(index)}
+                            onDragEnd={() => setDraggedSceneIndex(null)}
+                            className={`relative rounded border cursor-grab active:cursor-grabbing overflow-hidden transition ${
+                              draggedSceneIndex === index
+                                ? "border-blue-400 opacity-50"
+                                : "border-slate-600"
+                            }`}
+                            style={{
+                              flexGrow: Math.max(width, 0.1),
+                              flexBasis: 0,
+                              minWidth: "80px",
+                            }}
+                          >
+                            <div className="absolute inset-0 bg-slate-700" />
 
-                          return (
-                            <div
-                              key={`${activeVersion.id}-${index}-${scene.start}-${scene.end}`}
-                              draggable
-                              onDragStart={() =>
-                                setDraggedSceneIndex(
-                                  index
-                                )
-                              }
-                              onDragOver={(e) =>
-                                e.preventDefault()
-                              }
-                              onDrop={() =>
-                                handleDragEnd(index)
-                              }
-                              onDragEnd={() =>
-                                setDraggedSceneIndex(null)
-                              }
-                              className={`relative rounded border cursor-grab active:cursor-grabbing overflow-hidden transition ${
-                                draggedSceneIndex ===
-                                index
-                                  ? "border-blue-400 opacity-50"
-                                  : "border-slate-600"
-                              }`}
-                              style={{
-                                flexGrow: Math.max(
-                                  width,
-                                  0.1
-                                ),
-                                flexBasis: 0,
-                                minWidth: "80px",
-                              }}
-                            >
-                              <div className="absolute inset-0 bg-slate-700" />
+                            <div className="relative z-10 p-3 h-full flex flex-col justify-between">
+                              <span className="text-xs font-semibold text-blue-400">
+                                SCENE {index + 1}
+                              </span>
 
-                              <div className="relative z-10 p-3 h-full flex flex-col justify-between">
-                                <span className="text-xs font-semibold text-blue-400">
-                                  SCENE {index + 1}
+                              <div>
+                                <span className="block text-xs text-slate-300">
+                                  {formatTime(scene.start)} →{" "}
+                                  {formatTime(scene.end)}
                                 </span>
 
-                                <div>
-                                  <span className="block text-xs text-slate-300">
-                                    {formatTime(
-                                      scene.start
-                                    )}{" "}
-                                    →
-                                    {" "}
-                                    {formatTime(
-                                      scene.end
-                                    )}
-                                  </span>
-
-                                  <span className="block text-xs text-slate-500 mt-1">
-                                    {scene.duration.toFixed(
-                                      1
-                                    )}
-                                    s
-                                  </span>
-                                </div>
+                                <span className="block text-xs text-slate-500 mt-1">
+                                  {scene.duration.toFixed(1)}s
+                                </span>
                               </div>
                             </div>
-                          );
-                        }
-                      )}
+                          </div>
+                        );
+                      })}
                     </div>
 
-                    <div className="flex justify-between text-xs text-slate-500 mb-6">
+                    <div className="flex justify-between text-xs text-slate-500">
                       <span>00:00</span>
                       <span>
-                        {formatTime(
-                          selectedTask.duration || 0
-                        )}
+                        {formatTime(selectedTask.duration || 0)}
                       </span>
-                    </div>
-
-                    <div className="space-y-3">
-                      {activeVersion.scenes.map(
-                        (scene, index) => (
-                          <div
-                            key={`${activeVersion.id}-editor-${index}`}
-                            className="flex items-center gap-4 bg-slate-800 border border-slate-700 rounded-lg p-3"
-                          >
-                            <div className="w-24 shrink-0">
-                              <span className="font-semibold text-blue-400">
-                                Scene{" "}
-                                {String(index + 1).padStart(
-                                  2,
-                                  "0"
-                                )}
-                              </span>
-                            </div>
-
-                            <label className="flex-1 text-xs text-slate-400">
-                              Початок
-                              <input
-                                type="number"
-                                min="0"
-                                max={Math.max(
-                                  0,
-                                  scene.end - 0.1
-                                )}
-                                step="0.1"
-                                value={scene.start}
-                                onChange={(e) =>
-                                  updateScene(
-                                    index,
-                                    "start",
-                                    Number(e.target.value)
-                                  )
-                                }
-                                onBlur={handleTrimSave}
-                                className="mt-1 w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded text-white"
-                              />
-                            </label>
-
-                            <label className="flex-1 text-xs text-slate-400">
-                              Кінець
-                              <input
-                                type="number"
-                                min={scene.start + 0.1}
-                                max={
-                                  selectedTask.duration ||
-                                  scene.end
-                                }
-                                step="0.1"
-                                value={scene.end}
-                                onChange={(e) =>
-                                  updateScene(
-                                    index,
-                                    "end",
-                                    Number(e.target.value)
-                                  )
-                                }
-                                onBlur={handleTrimSave}
-                                className="mt-1 w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded text-white"
-                              />
-                            </label>
-
-                            <div className="w-20 text-right text-sm text-slate-400 shrink-0">
-                              {scene.duration.toFixed(1)}s
-                            </div>
-                          </div>
-                        )
-                      )}
                     </div>
                   </div>
                 )}
-
-                <p className="text-xs text-slate-500 mt-4">
-                  Зараз редагується структура монтажу. Фінальне
-                  відео буде створено на етапі рендера.
-                </p>
               </>
             ) : (
               <div className="mb-4">
@@ -820,27 +782,51 @@ export default function KanbanPage() {
             {uploadStatus && (
               <p
                 className={`text-sm mt-4 mb-4 font-medium ${
-                  uploading
-                    ? "text-yellow-400"
-                    : "text-green-400"
+                  uploading ? "text-yellow-400" : "text-green-400"
                 }`}
               >
                 {uploadStatus}
               </p>
             )}
 
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedTask(null);
-                setVersions([]);
-                setActiveVersion(null);
-                setUploadStatus("");
-              }}
-              className="w-full py-3 bg-slate-700 rounded text-slate-300 hover:bg-slate-600 font-medium mt-4"
-            >
-              Закрити
-            </button>
+            <div className="flex justify-center mt-4">
+              <button
+                type="button"
+                onClick={() => deleteTask(selectedTask.id)}
+                className="inline-flex items-center gap-2 px-5 py-3 bg-slate-700 rounded text-slate-300 hover:bg-red-900/40 hover:text-red-400 font-medium transition"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  className="w-5 h-5"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M3 6h18"
+                  />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M8 6V4h8v2"
+                  />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M19 6l-1 14H6L5 6"
+                  />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M10 10v6M14 10v6"
+                  />
+                </svg>
+                Видалити задачу
+              </button>
+            </div>
           </div>
         </div>
       )}
