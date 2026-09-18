@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 
 interface Scene {
@@ -42,6 +42,132 @@ function normalizeScenes(scenes: Scene[]): Scene[] {
   }));
 }
 
+
+function SceneThumbnail({
+  videoUrl,
+  timestamp,
+}: {
+  videoUrl: string;
+  timestamp: number;
+}) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+
+    if (!video || !canvas) return;
+
+    let cancelled = false;
+
+    const captureFrame = () => {
+      if (cancelled) return;
+
+      if (
+        !video.videoWidth ||
+        !video.videoHeight
+      ) {
+        return;
+      }
+
+      const canvasWidth = 80;
+      const canvasHeight = Math.round(
+        canvasWidth *
+          (video.videoHeight / video.videoWidth)
+      );
+
+      canvas.width = canvasWidth;
+      canvas.height = canvasHeight;
+
+      const context = canvas.getContext("2d");
+
+      if (!context) return;
+
+      context.clearRect(
+        0,
+        0,
+        canvasWidth,
+        canvasHeight
+      );
+
+      context.drawImage(
+        video,
+        0,
+        0,
+        video.videoWidth,
+        video.videoHeight,
+        0,
+        0,
+        canvasWidth,
+        canvasHeight
+      );
+    };
+
+    const handleMetadata = () => {
+      if (!Number.isFinite(video.duration)) {
+        return;
+      }
+
+      const safeTimestamp = Math.min(
+        Math.max(timestamp, 0),
+        Math.max(video.duration - 0.05, 0)
+      );
+
+      video.currentTime = safeTimestamp;
+    };
+
+    const handleSeeked = () => {
+      captureFrame();
+    };
+
+    video.addEventListener(
+      "loadedmetadata",
+      handleMetadata
+    );
+
+    video.addEventListener(
+      "seeked",
+      handleSeeked
+    );
+
+    video.load();
+
+    return () => {
+      cancelled = true;
+
+      video.removeEventListener(
+        "loadedmetadata",
+        handleMetadata
+      );
+
+      video.removeEventListener(
+        "seeked",
+        handleSeeked
+      );
+    };
+  }, [videoUrl, timestamp]);
+
+  return (
+    <div className="w-[60px] shrink-0 self-stretch bg-black border-r border-slate-600 flex items-start">
+      <video
+        ref={videoRef}
+        src={videoUrl}
+        crossOrigin="anonymous"
+        muted
+        playsInline
+        preload="metadata"
+        className="hidden"
+      />
+
+      <canvas
+        ref={canvasRef}
+        className="block w-[60px] h-auto"
+      />
+    </div>
+  );
+}
+
 export default function KanbanPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [title, setTitle] = useState("");
@@ -61,8 +187,48 @@ export default function KanbanPage() {
 
   const [savingScenes, setSavingScenes] = useState(false);
   const [creatingVersion, setCreatingVersion] = useState(false);
+  const [renderingVersion, setRenderingVersion] = useState(false);
+  const [renderPlaybackTime, setRenderPlaybackTime] = useState(0);
+
+  const renderVideoRef = useRef<HTMLVideoElement | null>(null);
 
   const supabase = createClient();
+
+  async function handleDownloadRender() {
+    if (!activeVersion?.render_url) return;
+
+    const downloadUrl = activeVersion.render_url;
+    const fileName = `video-v${activeVersion.version_number}.mp4`;
+
+    try {
+      const response = await fetch(downloadUrl);
+
+      if (!response.ok) {
+        throw new Error(
+          `Failed to download render video: ${response.status} ${response.statusText}`
+        );
+      }
+
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+
+      link.href = objectUrl;
+      link.download = fileName;
+      link.style.display = "none";
+
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+
+      window.setTimeout(() => {
+        URL.revokeObjectURL(objectUrl);
+      }, 0);
+    } catch (error) {
+      console.error("Download render error:", error);
+      window.open(downloadUrl, "_self");
+    }
+  }
 
   useEffect(() => {
     async function init() {
@@ -506,6 +672,117 @@ export default function KanbanPage() {
     await saveScenes(activeVersion.scenes);
   }
 
+  useEffect(() => {
+  const video = renderVideoRef.current;
+
+  if (!video) {
+    setRenderPlaybackTime(0);
+    return;
+  }
+
+  const handleTimeUpdate = () => {
+    setRenderPlaybackTime(video.currentTime);
+  };
+
+  const handleLoadedMetadata = () => {
+    setRenderPlaybackTime(video.currentTime);
+  };
+
+  video.addEventListener("timeupdate", handleTimeUpdate);
+  video.addEventListener("loadedmetadata", handleLoadedMetadata);
+
+  return () => {
+    video.removeEventListener("timeupdate", handleTimeUpdate);
+    video.removeEventListener(
+      "loadedmetadata",
+      handleLoadedMetadata
+    );
+  };
+}, [activeVersion?.id, activeVersion?.render_url]);
+
+useEffect(() => {
+  setRenderPlaybackTime(0);
+}, [activeVersion?.id]);
+
+async function renderVersion() {
+    if (!activeVersion) return;
+
+    setRenderingVersion(true);
+    setUploadStatus(
+      `Рендеринг V${activeVersion.version_number}...`
+    );
+
+    try {
+      const res = await fetch("/api/render-version", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          versionId: activeVersion.id,
+        }),
+      });
+
+      const result = await res.json();
+
+      if (!res.ok) {
+        alert(
+          "Помилка рендеру: " +
+            (result.error || "Невідома помилка")
+        );
+        return;
+      }
+
+      const renderedVersion =
+        result.version as VideoVersion;
+
+      const updatedTask = result.task as Task | undefined;
+
+      setActiveVersion(renderedVersion);
+
+      setVersions((current) =>
+        current.map((version) =>
+          version.id === renderedVersion.id
+            ? renderedVersion
+            : version
+        )
+      );
+
+      if (updatedTask) {
+        setTasks((current) =>
+          current.map((task) =>
+            task.id === updatedTask.id
+              ? {
+                  ...task,
+                  ...updatedTask,
+                  status: "review",
+                }
+              : task
+          )
+        );
+
+        setSelectedTask((current) =>
+          current && current.id === updatedTask.id
+            ? {
+                ...current,
+                ...updatedTask,
+                status: "review",
+              }
+            : current
+        );
+      }
+
+      setUploadStatus(
+        `V${renderedVersion.version_number} успішно відрендерено.`
+      );
+    } catch (error) {
+      console.error("Render version error:", error);
+      alert("Помилка рендеру відео.");
+    } finally {
+      setRenderingVersion(false);
+    }
+  }
+
   const columns: Task["status"][] = [
     "todo",
     "in_progress",
@@ -631,6 +908,15 @@ export default function KanbanPage() {
               </span>
             </p>
 
+            {selectedTask.video_url && (
+              <p className="text-sm text-slate-400 mb-4">
+                Тривалість відео:{" "}
+                <span className="text-slate-200 font-medium">
+                  {(selectedTask.duration || 0).toFixed(1)} с
+                </span>
+              </p>
+            )}
+
             {selectedTask.video_url ? (
               <>
                 <div className="mb-6">
@@ -690,8 +976,8 @@ export default function KanbanPage() {
                 </div>
 
                 {activeVersion && (
-                  <div className="bg-slate-900 border border-slate-700 rounded-lg p-4">
-                    <div className="flex items-center justify-between mb-4">
+                  <div className="bg-slate-900 border border-slate-700 rounded-lg p-3">
+                    <div className="flex items-center justify-between mb-2">
                       <div>
                         <h4 className="text-lg font-semibold">
                           V{activeVersion.version_number} — Монтажний таймлайн
@@ -702,57 +988,162 @@ export default function KanbanPage() {
                         </p>
                       </div>
 
-                      <span className="text-xs text-slate-400">
-                        {savingScenes ? "Збереження..." : "Збережено"}
-                      </span>
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs text-slate-400">
+                          {savingScenes ? "Збереження..." : "Збережено"}
+                        </span>
+
+                        <button
+                          type="button"
+                          onClick={renderVersion}
+                          disabled={
+                            renderingVersion ||
+                            savingScenes ||
+                            activeVersion.scenes.length === 0
+                          }
+                          className="px-4 py-2 bg-green-600 rounded font-medium hover:bg-green-500 disabled:opacity-50"
+                        >
+                          {renderingVersion
+                            ? "Рендеринг..."
+                            : `Рендерити V${activeVersion.version_number}`}
+                        </button>
+                      </div>
                     </div>
 
-                    <div className="flex gap-1 h-24 mb-2">
-                      {activeVersion.scenes.map((scene, index) => {
-                        const total = selectedTask.duration || 1;
-                        const width = (scene.duration / total) * 100;
+                    <div className="flex gap-1 w-full">
+                      {activeVersion.scenes.map(
+                        (scene, index) => {
+                          const total =
+                            selectedTask.duration || 1;
 
-                        return (
-                          <div
-                            key={`${activeVersion.id}-${index}-${scene.start}-${scene.end}`}
-                            draggable
-                            onDragStart={() => setDraggedSceneIndex(index)}
-                            onDragOver={(e) => e.preventDefault()}
-                            onDrop={() => handleDragEnd(index)}
-                            onDragEnd={() => setDraggedSceneIndex(null)}
-                            className={`relative rounded border cursor-grab active:cursor-grabbing overflow-hidden transition ${
-                              draggedSceneIndex === index
-                                ? "border-blue-400 opacity-50"
-                                : "border-slate-600"
-                            }`}
-                            style={{
-                              flexGrow: Math.max(width, 0.1),
-                              flexBasis: 0,
-                              minWidth: "80px",
-                            }}
-                          >
-                            <div className="absolute inset-0 bg-slate-700" />
+                          const width =
+                            (scene.duration / total) * 100;
 
-                            <div className="relative z-10 p-3 h-full flex flex-col justify-between">
-                              <span className="text-xs font-semibold text-blue-400">
-                                SCENE {index + 1}
-                              </span>
+                          const sceneRenderStart =
+                            activeVersion.scenes
+                              .slice(0, index)
+                              .reduce(
+                                (sum, currentScene) =>
+                                  sum + currentScene.duration,
+                                0
+                              );
 
-                              <div>
-                                <span className="block text-xs text-slate-300">
-                                  {formatTime(scene.start)} →{" "}
-                                  {formatTime(scene.end)}
-                                </span>
+                          const sceneRenderEnd =
+                            sceneRenderStart + scene.duration;
 
-                                <span className="block text-xs text-slate-500 mt-1">
-                                  {scene.duration.toFixed(1)}s
-                                </span>
+                          let sceneProgress = 0;
+
+                          if (renderPlaybackTime >= sceneRenderEnd) {
+                            sceneProgress = 1;
+                          } else if (
+                            renderPlaybackTime > sceneRenderStart
+                          ) {
+                            sceneProgress =
+                              (renderPlaybackTime -
+                                sceneRenderStart) /
+                              scene.duration;
+                          }
+
+                          return (
+                            <div
+                              key={`${activeVersion.id}-${index}-${scene.start}-${scene.end}`}
+                              draggable
+                              onDragStart={() =>
+                                setDraggedSceneIndex(index)
+                              }
+                              onDragOver={(e) =>
+                                e.preventDefault()
+                              }
+                              onDrop={() =>
+                                handleDragEnd(index)
+                              }
+                              onDragEnd={() =>
+                                setDraggedSceneIndex(null)
+                              }
+                              className={`relative rounded border overflow-hidden shrink-0 cursor-grab active:cursor-grabbing transition ${
+                                draggedSceneIndex === index
+                                  ? "border-blue-400 opacity-50"
+                                  : "border-slate-600"
+                              }`}
+                              style={{
+                                flexGrow: Math.max(width, 1),
+                                flexShrink: 1,
+                                flexBasis: 0,
+                                minWidth: 0,
+                              }}
+                            >
+                              <div className="relative flex items-stretch min-w-0 bg-slate-700">
+                                <div
+                                  className="absolute inset-y-0 left-0 bg-black/45 pointer-events-none z-10 transition-[width] duration-100"
+                                  style={{
+                                    width: `${sceneProgress * 100}%`,
+                                  }}
+                                />
+                                {selectedTask.video_url && (
+                                  <SceneThumbnail
+                                    videoUrl={
+                                      selectedTask.video_url
+                                    }
+                                    timestamp={scene.start}
+                                  />
+                                )}
+
+                                <div className="flex-1 min-w-[120px] p-4 flex flex-col justify-center gap-4">
+                                  <span className="text-xs font-semibold text-blue-400">
+                                    SCENE {index + 1}
+                                  </span>
+
+                                  <div>
+                                    <span className="block text-sm text-slate-300">
+                                      {formatTime(scene.start)} -{" "}
+                                      {formatTime(scene.end)}
+                                    </span>
+
+                                    <span className="block text-xs text-slate-500 mt-1">
+                                      {scene.duration.toFixed(1)}s
+                                    </span>
+                                  </div>
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        );
-                      })}
+                          );
+                        }
+                      )}
                     </div>
+
+                    {activeVersion.render_url && (
+                      <div className="mt-6 mb-6">
+                        <p className="text-sm font-medium mb-2 text-green-400">
+                          Готовий рендер V{activeVersion.version_number}:
+                        </p>
+
+                        <video
+                          ref={renderVideoRef}
+                          controls
+                          src={activeVersion.render_url}
+                          className="w-full rounded border border-slate-700 max-h-96"
+                        />
+
+                        <div className="mt-3 flex justify-center">
+                          <button
+                            type="button"
+                            onClick={handleDownloadRender}
+                            className="inline-flex items-center gap-2 rounded-md border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-sm text-blue-400 hover:bg-blue-500/20 hover:text-blue-300"
+                          >
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              viewBox="0 0 20 20"
+                              fill="currentColor"
+                              className="h-4 w-4"
+                              aria-hidden="true"
+                            >
+                              <path d="M10 2a.75.75 0 0 1 .75.75v7.19l2.22-2.22a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 1 1 1.06-1.06l2.22 2.22V2.75A.75.75 0 0 1 10 2Zm-5.25 12a.75.75 0 0 1 .75.75v1a.75.75 0 0 0 .75.75h8.5a.75.75 0 0 0 .75-.75v-1a.75.75 0 0 1 1.5 0v1A2.25 2.25 0 0 1 14.75 18h-8.5A2.25 2.25 0 0 1 4 15.75v-1a.75.75 0 0 1 .75-.75Z" />
+                            </svg>
+                            Завантажити відео
+                          </button>
+                        </div>
+                      </div>
+                    )}
 
                     <div className="flex justify-between text-xs text-slate-500">
                       <span>00:00</span>
