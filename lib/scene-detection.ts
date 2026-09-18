@@ -3,12 +3,18 @@ import ffmpegPath from 'ffmpeg-static';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+
+const execFileAsync = promisify(execFile);
 
 if (!ffmpegPath) {
   throw new Error('FFmpeg binary path could not be resolved.');
 }
 
-ffmpeg.setFfmpegPath(ffmpegPath);
+const ffmpegExecutable: string = ffmpegPath;
+
+ffmpeg.setFfmpegPath(ffmpegExecutable);
 
 export interface Scene {
   start: number;
@@ -21,30 +27,73 @@ export interface SceneDetectionResult {
   count: number;
 }
 
-function getVideoDuration(inputPath: string): Promise<number> {
-  return new Promise((resolve, reject) => {
-    ffmpeg.ffprobe(inputPath, (error, metadata) => {
-      if (error) {
-        reject(error);
-        return;
+async function getVideoDuration(
+  inputPath: string
+): Promise<number> {
+  try {
+    const { stderr } = await execFileAsync(
+      ffmpegExecutable,
+      [
+        '-hide_banner',
+        '-i',
+        inputPath,
+        '-f',
+        'null',
+        '-',
+      ],
+      {
+        maxBuffer: 10 * 1024 * 1024,
       }
+    );
 
-      const duration = metadata.format.duration;
+    const match = stderr.match(
+      /Duration:\s*(\d{2}):(\d{2}):(\d{2}(?:\.\d+)?)/
+    );
 
-      if (typeof duration !== 'number' || !Number.isFinite(duration)) {
-        reject(new Error('Could not determine video duration.'));
-        return;
-      }
+    if (!match) {
+      throw new Error(
+        'Could not determine video duration from FFmpeg output.'
+      );
+    }
 
-      resolve(duration);
-    });
-  });
+    const hours = Number(match[1]);
+    const minutes = Number(match[2]);
+    const seconds = Number(match[3]);
+
+    const duration =
+      hours * 3600 +
+      minutes * 60 +
+      seconds;
+
+    if (
+      !Number.isFinite(duration) ||
+      duration <= 0
+    ) {
+      throw new Error(
+        'FFmpeg returned an invalid video duration.'
+      );
+    }
+
+    return duration;
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : 'Unknown FFmpeg error';
+
+    throw new Error(
+      `Could not determine video duration: ${message}`
+    );
+  }
 }
 
-function parseSceneTimestamps(output: string): number[] {
+function parseSceneTimestamps(
+  output: string
+): number[] {
   const timestamps: number[] = [];
 
-  const regex = /pts_time:([0-9]+(?:\.[0-9]+)?)/g;
+  const regex =
+    /pts_time:([0-9]+(?:\.[0-9]+)?)/g;
 
   let match: RegExpExecArray | null;
 
@@ -71,7 +120,9 @@ function createScenes(
             timestamp > 0 &&
             timestamp < duration
         )
-        .map((timestamp) => Number(timestamp.toFixed(3)))
+        .map((timestamp) =>
+          Number(timestamp.toFixed(3))
+        )
     )
   ).sort((a, b) => a - b);
 
@@ -84,7 +135,8 @@ function createScenes(
       continue;
     }
 
-    const sceneDuration = cutTimestamp - sceneStart;
+    const sceneDuration =
+      cutTimestamp - sceneStart;
 
     if (sceneDuration > 0) {
       scenes.push({
@@ -128,16 +180,21 @@ function runSceneDetection(
     });
 
     command.on('end', () => {
-      resolve(parseSceneTimestamps(stderr));
-    });
-
-    command.on('error', (error: Error) => {
-      reject(
-        new Error(
-          `FFmpeg scene detection failed: ${error.message}\n${stderr}`
-        )
+      resolve(
+        parseSceneTimestamps(stderr)
       );
     });
+
+    command.on(
+      'error',
+      (error: Error) => {
+        reject(
+          new Error(
+            `FFmpeg scene detection failed: ${error.message}\n${stderr}`
+          )
+        );
+      }
+    );
 
     command.run();
   });
@@ -155,7 +212,8 @@ async function downloadVideo(
     );
   }
 
-  const arrayBuffer = await response.arrayBuffer();
+  const arrayBuffer =
+    await response.arrayBuffer();
 
   await fs.promises.writeFile(
     outputPath,
@@ -186,9 +244,10 @@ export async function detectScenes(
 
   try {
     if (isUrl) {
-      const extension = path.extname(
-        new URL(input).pathname
-      ) || '.mp4';
+      const extension =
+        path.extname(
+          new URL(input).pathname
+        ) || '.mp4';
 
       temporaryFile = path.join(
         os.tmpdir(),
@@ -199,7 +258,10 @@ export async function detectScenes(
         `Downloading video for scene detection: ${input}`
       );
 
-      await downloadVideo(input, temporaryFile);
+      await downloadVideo(
+        input,
+        temporaryFile
+      );
 
       inputPath = temporaryFile;
     }
@@ -208,12 +270,18 @@ export async function detectScenes(
       `Starting scene detection. Threshold: ${threshold}`
     );
 
-    const duration = await getVideoDuration(inputPath);
+    const duration =
+      await getVideoDuration(inputPath);
 
-    const cutTimestamps = await runSceneDetection(
-      inputPath,
-      threshold
+    console.log(
+      `Video duration: ${duration.toFixed(3)} seconds`
     );
+
+    const cutTimestamps =
+      await runSceneDetection(
+        inputPath,
+        threshold
+      );
 
     const scenes = createScenes(
       duration,
@@ -231,7 +299,10 @@ export async function detectScenes(
   } finally {
     if (temporaryFile) {
       try {
-        await fs.promises.unlink(temporaryFile);
+        await fs.promises.unlink(
+          temporaryFile
+        );
+
         console.log(
           `Temporary video file removed: ${temporaryFile}`
         );
