@@ -865,8 +865,8 @@ async function renderVersion() {
       </div>
 
       {selectedTask && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4 sm:p-6">
-          <div className="bg-slate-800 rounded-xl w-[min(96vw,1800px)] max-h-[94vh] overflow-y-auto p-4 sm:p-6">
+              <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-3 sm:p-4 overflow-auto">
+                <div className="bg-slate-800 rounded-xl w-[min(98vw,1600px)] max-h-[94vh] overflow-y-auto p-5 sm:p-6">
             <div className="flex items-start justify-between gap-4 mb-2">
               <h3 className="text-xl font-bold">
                 {selectedTask.title}
@@ -931,7 +931,7 @@ async function renderVersion() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.55fr)_minmax(340px,0.95fr)] gap-4 min-h-[520px]">
+                  <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.9fr)_minmax(300px,0.8fr)] gap-4 min-h-[520px]">
                     <div className="min-w-0 rounded-lg border border-slate-700 bg-slate-950/40 p-4 flex flex-col overflow-hidden">
                       <div className="flex items-center justify-between mb-3 shrink-0">
                         <h5 className="text-sm font-semibold text-slate-300">
@@ -1044,26 +1044,19 @@ async function renderVersion() {
                       </div>
                     </div>
 
-                    <div className="min-w-0 rounded-lg border border-slate-700 bg-slate-950/40 p-4 flex flex-col overflow-hidden">
-                      <div className="flex items-center justify-between mb-3 shrink-0">
-                        <h5 className="text-sm font-semibold text-slate-300">
-                          Preview area
-                        </h5>
-                      </div>
-
+                    <div className="min-w-0 rounded-lg border border-slate-700 bg-slate-950/40 p-2 flex flex-col overflow-hidden justify-center">
                       {selectedTask.video_url ? (
-                        <div className="flex-1 min-h-0 flex items-center justify-center overflow-hidden rounded-md border border-slate-700/80 bg-black/70 p-3">
-                          <div className="h-full max-h-full aspect-[9/16] w-auto max-w-full rounded-md border border-slate-600 bg-black shadow-2xl overflow-hidden">
+                        <div className="flex-1 min-h-0 flex items-center justify-center overflow-hidden">
+                          <div className="w-full max-w-[340px] aspect-[9/16] rounded-md border border-slate-700 bg-black overflow-hidden shadow-2xl">
                             <video
                               src={selectedTask.video_url}
-                              controls
                               playsInline
                               className="h-full w-full object-contain bg-black"
                             />
                           </div>
                         </div>
                       ) : (
-                        <div className="flex-1 rounded-md border border-dashed border-slate-700/80 bg-slate-900/40" />
+                        <div className="flex-1 min-h-[320px] rounded-md border border-dashed border-slate-700/80 bg-slate-900/40" />
                       )}
                     </div>
                   </div>
