@@ -58,6 +58,7 @@ interface CommentApiResponse {
 }
 
 const COMMENT_REACTIONS = ["👍", "❤️", "😂", "👀", "🚀"];
+const MAX_TASK_TITLE_LENGTH = 60;
 
 function formatTime(seconds: number): string {
   const minutes = Math.floor(seconds / 60);
@@ -1042,7 +1043,7 @@ export default function KanbanPage() {
   async function handleAddTask(e: React.FormEvent) {
     e.preventDefault();
 
-    if (!title) return;
+    if (!title || title.length > MAX_TASK_TITLE_LENGTH) return;
 
     try {
       const res = await fetch("/api/tasks", {
@@ -1658,6 +1659,7 @@ async function renderVersion() {
       >
         <input
           type="text"
+          maxLength={MAX_TASK_TITLE_LENGTH}
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="New video task title..."
@@ -1703,7 +1705,7 @@ async function renderVersion() {
                     onClick={() => selectTask(task)}
                     className="flex h-[92px] cursor-pointer items-center rounded-md border border-zinc-800 bg-zinc-900/80 px-4 transition hover:border-zinc-700 hover:bg-zinc-900"
                   >
-                    <p className="text-sm font-medium text-zinc-100">
+                    <p className="min-w-0 whitespace-normal break-words text-sm font-medium text-zinc-100">
                       {task.title}
                     </p>
                   </div>
@@ -1724,7 +1726,7 @@ async function renderVersion() {
               <div className="fixed inset-0 z-50 flex items-center justify-center overflow-auto bg-black/80 p-3 sm:p-4 backdrop-blur-[1px]">
                 <div className={`max-h-[94vh] overflow-y-auto rounded-lg border border-zinc-800 bg-zinc-950/95 p-4 shadow-[0_16px_48px_rgba(0,0,0,0.45)] sm:p-5 ${selectedTask.status === "todo" ? "w-[50vw] min-w-[50vw] max-w-[50vw]" : "w-[min(98vw,1600px)]"}`}>
             <div className="flex items-start justify-between gap-4 mb-2">
-                <h3 className="text-base font-semibold text-zinc-100">
+                <h3 className="min-w-0 whitespace-normal break-words text-base font-semibold text-zinc-100">
                 {selectedTask.title}
               </h3>
 

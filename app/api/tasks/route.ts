@@ -3,6 +3,8 @@ import { createClient as createSupabaseAdmin } from "@supabase/supabase-js";
 import { sendTelegramNotification } from "@/lib/telegram";
 import { supabaseServer } from "@/lib/supabase/supabaseServer";
 
+const MAX_TASK_TITLE_LENGTH = 60;
+
 function getSupabaseAdmin() {
   return createSupabaseAdmin(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -17,6 +19,20 @@ export async function POST(request: Request) {
     if (!title) {
       return NextResponse.json(
         { error: "Missing title" },
+        { status: 400 }
+      );
+    }
+
+    if (typeof title !== "string") {
+      return NextResponse.json(
+        { error: "Invalid title" },
+        { status: 400 }
+      );
+    }
+
+    if (title.length > MAX_TASK_TITLE_LENGTH) {
+      return NextResponse.json(
+        { error: `Title must be at most ${MAX_TASK_TITLE_LENGTH} characters` },
         { status: 400 }
       );
     }
