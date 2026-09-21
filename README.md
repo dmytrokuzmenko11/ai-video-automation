@@ -1,36 +1,97 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AI Video Automation
 
-## Getting Started
+Веб-застосунок для роботи з відео-задачами, який охоплює повний цикл: створення задачі, завантаження відео, автоматичне визначення сцен, монтаж на таймлайні, рендер, review та завершення задачі.
 
-First, run the development server:
+## Реалізовано
+
+- Авторизація та реєстрація через Supabase Auth
+- Kanban-дошка зі статусами: Todo → In Progress → Review → Done
+- Завантаження відео та автоматичне визначення його тривалості
+- Автоматичне визначення сцен через FFmpeg
+- Drag & Drop таймлайн для редагування сцен
+- Різання та зміна порядку сцен
+- Кілька незалежних версій монтажу всередині однієї задачі
+- Окремий рендер і збереження результату для кожної версії
+- Review-коментарі
+- Адмін-панель зі статистикою рендеру та історією помилок
+- Telegram-алерти для критичних помилок обробки
+- Збереження помилок у `error_logs` у Supabase
+- Live-деплой на Railway
+
+## Технічні рішення
+
+**Next.js + TypeScript**
+
+Next.js використано як основний framework, щоб тримати frontend і server-side API в одному проєкті. TypeScript забезпечує типізацію основних даних і взаємодії між UI та backend-логікою.
+
+**Supabase**
+
+Supabase використовується для авторизації, PostgreSQL-бази даних і зберігання відеофайлів. Це дозволило швидко закрити backend-частину без створення окремої системи авторизації та файлового сховища.
+
+**FFmpeg**
+
+FFmpeg використовується як основний engine для роботи з відео: визначення сцен, отримання тривалості, обрізання, об'єднання сцен та фінального рендеру.
+
+**Railway**
+
+Railway використовується для live-деплою, оскільки застосунку потрібне server-side виконання FFmpeg та системних залежностей.
+
+**GitHub**
+
+GitHub використовується як repository та система контролю версій проєкту.
+
+**Telegram + Supabase `error_logs`**
+
+Критичні помилки під час upload, FFmpeg-обробки та рендеру надсилаються в Telegram для оперативного повідомлення. Одночасно помилки зберігаються в `error_logs` у Supabase для подальшого аналізу.
+
+Архітектура навмисно залишається відносно простою: основний фокус був на реалізації повного end-to-end відео-пайплайну без зайвої інфраструктури для MVP.
+
+## Локальний запуск
+
+Необхідні Node.js, FFmpeg та Supabase project.
 
 ```bash
+git clone https://github.com/dmytrokuzmenko11/ai-video-automation.git
+cd ai-video-automation
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Після запуску застосунок доступний за адресою:
+`http://localhost:3000`
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Для роботи необхідно налаштувати відповідні Supabase environment variables у `.env.local`.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Що б я доробив за більшого часу
 
-## Learn More
+Наступний етап я б сфокусував переважно на тому, щоб зробити роботу з редактором ближчою до спрощеного професійного NLE, зберігаючи при цьому простоту веб-інструменту.
 
-To learn more about Next.js, take a look at the following resources:
+### Рендер і відеообробка
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- Універсалізація render pipeline для підтримки різних вхідних форматів, роздільних здатностей та FPS
+- Налаштування основних параметрів вихідного відеофайлу: формат, роздільна здатність, FPS та бітрейт
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### Редактор і таймлайн
 
-## Deploy on Vercel
+- Гарячі клавіші та покадрова навігація
+- Більш гнучке обрізання та зміна тривалості кліпів безпосередньо на таймлайні
+- Масштабування таймлайна
+- Точний timecode поточної позиції
+- Покращення плавності роботи таймлайна та preview
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### Review
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Коментарі, прив'язані до конкретної позиції у відео безпосередньо в кадрі відео, за аналогією з Frame.io
+
+### Preview та продуктивність
+
+- Вибір якості preview для роботи при повільному інтернет-з'єднанні
+- Масштабування preview
+- Подальше покращення відтворення та роботи з відео
+- Візуальний прогрес завантаження та рендеру
+
+### Workflow та UI
+
+- Список попередньо відрендерених версій із можливістю завантаження
+- Загальне покращення інтерфейсу
+
